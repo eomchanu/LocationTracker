@@ -1,0 +1,5 @@
+package com.eomchanu.location_tracker
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity: FlutterActivity()
