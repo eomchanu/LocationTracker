@@ -4,31 +4,27 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-Future<void> _requestLocationPermission() async {
-  var status = await Permission.location.request();
-  if (status.isGranted) {
-    print("Location permission granted");
-  } else {
-    print("Location permission denied");
-  }
-}
-
 void main() {
   runApp(LocationApp());
 }
 
 class LocationApp extends StatelessWidget {
+  const LocationApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Location App',
+      title: 'Location Tracker',
       home: LocationScreen(),
     );
   }
 }
 
 class LocationScreen extends StatefulWidget {
+  const LocationScreen({super.key});
+
   @override
+  // ignore: library_private_types_in_public_api
   _LocationScreenState createState() => _LocationScreenState();
 }
 
@@ -47,11 +43,35 @@ class _LocationScreenState extends State<LocationScreen> {
     _getWiFiInfo();
     _getGSMInfo();
   }
+  
+  // 위치 권한 요청
+  Future<void> _requestLocationPermission() async {
+    var status = await Permission.location.request();
+    if (status.isGranted) {
+      print("Location permission granted");
+      _getLocation();
+    } else if (status.isDenied) {
+      print("Location permission denied");
+    } else if (status.isPermanentlyDenied) {
+      print("Location permission permanently denied");
+      openAppSettings();
+    }
+  }
+
+  // 위치 정보 가져오기
+  Future<void> _getLocation() async {
+    _getGPSLocation();
+    // TODO: 위치 정보 가져오는 함수로 변경
+    _getWiFiInfo();
+    _getGSMInfo();
+  }
 
   // GPS 정보 가져오기
   Future<void> _getGPSLocation() async {
     try {
-      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
       setState(() {
         _gpsLocation = "Lat: ${position.latitude}, Lng: ${position.longitude}";
       });
@@ -94,7 +114,7 @@ class _LocationScreenState extends State<LocationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Location App')),
+      appBar: AppBar(title: Text('Location Tracker')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
