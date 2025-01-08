@@ -31,73 +31,79 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-     private fun getCellInfo(): List<Map<String, Any>>? {
+    private fun getCellInfo(): Map<String, Any>? {
         val telephonyManager = getSystemService(TELEPHONY_SERVICE) as? TelephonyManager
         if (telephonyManager == null) {
             throw Exception("TelephonyManager is not available.")
         }
 
-        val cellTowerList = mutableListOf<Map<String, Any>>()
+        val registeredCellTower = mutableListOf<Map<String, Any>>()
+        val neighboringCellTowers = mutableListOf<Map<String, Any>>()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
             val allCellInfo = telephonyManager.allCellInfo
             if (allCellInfo != null && allCellInfo.isNotEmpty()) {
                 for (cellInfo in allCellInfo) {
-                    when (cellInfo) {
-                        is CellInfoGsm -> {
-                            val cellIdentity = cellInfo.cellIdentity
-                            cellTowerList.add(
-                                mapOf(
-                                    "type" to "GSM",
-                                    "cid" to cellIdentity.cid,
-                                    "lac" to cellIdentity.lac,
-                                    "mcc" to cellIdentity.mcc,
-                                    "mnc" to cellIdentity.mnc
-                                )
-                            )
-                        }
+                    val isRegistered = when (cellInfo) {
+                        is CellInfoGsm -> cellInfo.isRegistered
+                        is CellInfoLte -> cellInfo.isRegistered
+                        is CellInfoCdma -> cellInfo.isRegistered
+                        is CellInfoWcdma -> cellInfo.isRegistered
+                        else -> false
+                    }
+
+                    val cellData = when (cellInfo) {
                         is CellInfoLte -> {
                             val cellIdentity = cellInfo.cellIdentity
-                            cellTowerList.add(
-                                mapOf(
-                                    "type" to "LTE",
-                                    "cid" to cellIdentity.ci,
-                                    "tac" to cellIdentity.tac,
-                                    "mcc" to cellIdentity.mcc,
-                                    "mnc" to cellIdentity.mnc
-                                )
+                            mapOf(
+                                "type" to "LTE",
+                                "cid" to cellIdentity.ci,
+                                "tac" to cellIdentity.tac,
+                                "mcc" to cellIdentity.mcc,
+                                "mnc" to cellIdentity.mnc
                             )
                         }
-                        is CellInfoCdma -> {
+                        is CellInfoGsm -> {
                             val cellIdentity = cellInfo.cellIdentity
-                            cellTowerList.add(
-                                mapOf(
-                                    "type" to "CDMA",
-                                    "networkId" to cellIdentity.networkId,
-                                    "systemId" to cellIdentity.systemId,
-                                    "baseStationId" to cellIdentity.basestationId
-                                )
+                            mapOf(
+                                "type" to "GSM",
+                                "cid" to cellIdentity.cid,
+                                "lac" to cellIdentity.lac,
+                                "mcc" to cellIdentity.mcc,
+                                "mnc" to cellIdentity.mnc
                             )
                         }
                         is CellInfoWcdma -> {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
                                 val cellIdentity = cellInfo.cellIdentity
-                                cellTowerList.add(
-                                    mapOf(
-                                        "type" to "WCDMA",
-                                        "cid" to cellIdentity.cid,
-                                        "lac" to cellIdentity.lac,
-                                        "mcc" to cellIdentity.mcc,
-                                        "mnc" to cellIdentity.mnc
-                                    )
+                                mapOf(
+                                    "type" to "WCDMA",
+                                    "cid" to cellIdentity.cid,
+                                    "lac" to cellIdentity.lac,
+                                    "mcc" to cellIdentity.mcc,
+                                    "mnc" to cellIdentity.mnc
                                 )
-                            }
+                            } else null
+                        }
+                        else -> null
+                    }
+
+                    if (cellData != null) {
+                        if (isRegistered) {
+                            registeredCellTower.add(cellData)
+                        } else {
+                            neighboringCellTowers.add(cellData)
                         }
                     }
                 }
             }
         }
 
-        return if (cellTowerList.isNotEmpty()) cellTowerList else null
+        return if (registeredCellTower.isNotEmpty() || neighboringCellTowers.isNotEmpty()) {
+            mapOf(
+                "registered" to registeredCellTower,
+                "neighboring" to neighboringCellTowers
+            )
+        } else null
     }
 }

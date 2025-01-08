@@ -31,7 +31,8 @@ class LocationScreen extends StatefulWidget {
 class _LocationScreenState extends State<LocationScreen> {
   String _gpsLocation = "Fetching...";
   String _wifiInfo = "Fetching...";
-  String _cellInfo = "Fetching...";
+  String _registeredCellInfo = "Fetching...";
+  String _neighboringCellInfo = "Fetching...";
   static const platform = MethodChannel('com.eomchanu.location_tracker/cell');
   final NetworkInfo _networkInfo = NetworkInfo();
 
@@ -98,27 +99,28 @@ class _LocationScreenState extends State<LocationScreen> {
   // 기지국 정보 가져오기
   Future<void> _getCellInfo() async {
     try {
-      // 네이티브 코드에서 셀 타워 정보를 가져옴
-      final List<dynamic> cellInfoList = await platform.invokeMethod('getCellInfo');
-      if (cellInfoList.isEmpty) {
-        setState(() {
-          _cellInfo = "No cell tower information available.";
-        });
-        return;
-      }
+      final Map<dynamic, dynamic> cellInfo = await platform.invokeMethod('getCellInfo');
+      final List<dynamic> registered = cellInfo['registered'];
+      final List<dynamic> neighboring = cellInfo['neighboring'];
 
-      // 셀 타워 정보를 보기 쉽게 문자열로 변환
-      final cellInfoText = cellInfoList.map((cellInfo) {
-        final Map<String, dynamic> info = Map<String, dynamic>.from(cellInfo);
-        return "Type: ${info['type']}, CID: ${info['cid'] ?? 'N/A'}, LAC: ${info['lac'] ?? 'N/A'}, MCC: ${info['mcc'] ?? 'N/A'}, MNC: ${info['mnc'] ?? 'N/A'}";
+      final registeredText = registered.map((info) {
+        final Map<String, dynamic> data = Map<String, dynamic>.from(info);
+        return "Type: ${data['type']}, CID: ${data['cid'] ?? 'N/A'}, LAC: ${data['lac'] ?? 'N/A'}, TAC: ${data['tac'] ?? 'N/A'}, MCC: ${data['mcc'] ?? 'N/A'}, MNC: ${data['mnc'] ?? 'N/A'}";
+      }).join("\n");
+
+      final neighboringText = neighboring.map((info) {
+        final Map<String, dynamic> data = Map<String, dynamic>.from(info);
+        return "Type: ${data['type']}, CID: ${data['cid'] ?? 'N/A'}, LAC: ${data['lac'] ?? 'N/A'}, TAC: ${data['tac'] ?? 'N/A'}, MCC: ${data['mcc'] ?? 'N/A'}, MNC: ${data['mnc'] ?? 'N/A'}";
       }).join("\n");
 
       setState(() {
-        _cellInfo = cellInfoText;
+        _registeredCellInfo = registeredText;
+        _neighboringCellInfo = neighboringText;
       });
     } catch (e) {
       setState(() {
-        _cellInfo = "Failed to fetch cell info: $e";
+        _registeredCellInfo = "Failed to fetch registered cell info: $e";
+        _neighboringCellInfo = "Failed to fetch neighboring cell info: $e";
       });
     }
   }
@@ -129,46 +131,47 @@ class _LocationScreenState extends State<LocationScreen> {
       appBar: AppBar(title: Text('Location Tracker')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "GPS Location",
-              style: const TextStyle(
-                fontWeight: FontWeight.bold
-              )
-            ),
-            Text(_gpsLocation),
-            SizedBox(height: 10),
-            Text(
-              "Wi-Fi Info",
-              style: const TextStyle(
-                fontWeight: FontWeight.bold
-              )
-            ),
-            Text(_wifiInfo),
-            SizedBox(height: 10),
-            Text(
-              "Cell Tower Info",
-              style: const TextStyle(
-                fontWeight: FontWeight.bold
-              )
-            ),
-            Text(_cellInfo),
-            SizedBox(height: 30),
-            ElevatedButton(onPressed: (){
-                _getLocation();
-              },
-              child: Text(
-                "refresh",
-                style: const TextStyle(
-                  color: Color.fromARGB(255, 0, 0, 0),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "GPS Location",
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
-            )
-          ],
+              Text(_gpsLocation),
+              SizedBox(height: 10),
+              Text(
+                "Wi-Fi Info",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(_wifiInfo),
+              SizedBox(height: 10),
+              Text(
+                "Registered Cell Tower Info",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(_registeredCellInfo),
+              SizedBox(height: 10),
+              Text(
+                "Neighboring Cell Tower Info",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(_neighboringCellInfo),
+              SizedBox(height: 30),
+              ElevatedButton(
+                onPressed: _getLocation,
+                child: Text(
+                  "Refresh",
+                  style: const TextStyle(
+                    color: Color.fromARGB(255, 0, 0, 0),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+              )
+            ],
+          ),
         ),
       ),
     );
