@@ -31,8 +31,8 @@ class LocationScreen extends StatefulWidget {
 class _LocationScreenState extends State<LocationScreen> {
   String _gpsLocation = "Fetching...";
   String _wifiInfo = "Fetching...";
-  String _gsmInfo = "Fetching...";
-  static const platform = MethodChannel('com.eomchanu.location_tracker/gsm');
+  String _cellInfo = "Fetching...";
+  static const platform = MethodChannel('com.eomchanu.location_tracker/cell');
   final NetworkInfo _networkInfo = NetworkInfo();
 
   @override
@@ -41,19 +41,17 @@ class _LocationScreenState extends State<LocationScreen> {
     _requestLocationPermission();
     _getGPSLocation();
     _getWiFiInfo();
-    _getGSMInfo();
+    _getCellInfo();
   }
   
   // 위치 권한 요청
   Future<void> _requestLocationPermission() async {
     var status = await Permission.location.request();
     if (status.isGranted) {
-      print("Location permission granted");
       _getLocation();
     } else if (status.isDenied) {
-      print("Location permission denied");
+      openAppSettings();
     } else if (status.isPermanentlyDenied) {
-      print("Location permission permanently denied");
       openAppSettings();
     }
   }
@@ -63,7 +61,7 @@ class _LocationScreenState extends State<LocationScreen> {
     _getGPSLocation();
     // TODO: 위치 정보 가져오는 함수로 변경
     _getWiFiInfo();
-    _getGSMInfo();
+    _getCellInfo();
   }
 
   // GPS 정보 가져오기
@@ -97,16 +95,30 @@ class _LocationScreenState extends State<LocationScreen> {
     }
   }
 
-  // GSM 정보 가져오기
-  Future<void> _getGSMInfo() async {
+  // 기지국 정보 가져오기
+  Future<void> _getCellInfo() async {
     try {
-      final gsmInfo = await platform.invokeMethod<Map>('getGsmInfo');
+      // 네이티브 코드에서 셀 타워 정보를 가져옴
+      final List<dynamic> cellInfoList = await platform.invokeMethod('getCellInfo');
+      if (cellInfoList.isEmpty) {
+        setState(() {
+          _cellInfo = "No cell tower information available.";
+        });
+        return;
+      }
+
+      // 셀 타워 정보를 보기 쉽게 문자열로 변환
+      final cellInfoText = cellInfoList.map((cellInfo) {
+        final Map<String, dynamic> info = Map<String, dynamic>.from(cellInfo);
+        return "Type: ${info['type']}, CID: ${info['cid'] ?? 'N/A'}, LAC: ${info['lac'] ?? 'N/A'}, MCC: ${info['mcc'] ?? 'N/A'}, MNC: ${info['mnc'] ?? 'N/A'}";
+      }).join("\n");
+
       setState(() {
-        _gsmInfo = "CID: ${gsmInfo?['cid']}, LAC: ${gsmInfo?['lac']}, MCC: ${gsmInfo?['mcc']}, MNC: ${gsmInfo?['mnc']}";
+        _cellInfo = cellInfoText;
       });
     } catch (e) {
       setState(() {
-        _gsmInfo = "Failed to get GSM info: $e";
+        _cellInfo = "Failed to fetch cell info: $e";
       });
     }
   }
@@ -120,11 +132,42 @@ class _LocationScreenState extends State<LocationScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("GPS Location: $_gpsLocation"),
+            Text(
+              "GPS Location",
+              style: const TextStyle(
+                fontWeight: FontWeight.bold
+              )
+            ),
+            Text(_gpsLocation),
             SizedBox(height: 10),
-            Text("Wi-Fi Info: $_wifiInfo"),
+            Text(
+              "Wi-Fi Info",
+              style: const TextStyle(
+                fontWeight: FontWeight.bold
+              )
+            ),
+            Text(_wifiInfo),
             SizedBox(height: 10),
-            Text("GSM Info: $_gsmInfo"),
+            Text(
+              "Cell Tower Info",
+              style: const TextStyle(
+                fontWeight: FontWeight.bold
+              )
+            ),
+            Text(_cellInfo),
+            SizedBox(height: 30),
+            ElevatedButton(onPressed: (){
+                _getLocation();
+              },
+              child: Text(
+                "refresh",
+                style: const TextStyle(
+                  color: Color.fromARGB(255, 0, 0, 0),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+            )
           ],
         ),
       ),
