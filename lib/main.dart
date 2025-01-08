@@ -1,8 +1,12 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:location_tracker/secrets.dart';
 
 void main() {
   runApp(LocationApp());
@@ -30,19 +34,25 @@ class LocationScreen extends StatefulWidget {
 
 class _LocationScreenState extends State<LocationScreen> {
   String _gpsLocation = "Fetching...";
+  String _wifiEstimatedLocation = "Fetching...";
+  String _cellTowerEstimatedLocation = "Fetching...";
   String _wifiInfo = "Fetching...";
   String _registeredCellInfo = "Fetching...";
   String _neighboringCellInfo = "Fetching...";
   static const platform = MethodChannel('com.eomchanu.location_tracker/cell');
   final NetworkInfo _networkInfo = NetworkInfo();
 
+  LatLng _initialPosition = const LatLng(37.7749, -122.4194); // Default: San Francisco
+  GoogleMapController? _mapController;
+  Set<Marker> _markers = {};
+
   @override
   void initState() {
     super.initState();
     _requestLocationPermission();
-    _getGPSLocation();
     _getWiFiInfo();
     _getCellInfo();
+    _getLocation();
   }
   
   // 위치 권한 요청
@@ -60,9 +70,8 @@ class _LocationScreenState extends State<LocationScreen> {
   // 위치 정보 가져오기
   Future<void> _getLocation() async {
     _getGPSLocation();
-    // TODO: 위치 정보 가져오는 함수로 변경
-    _getWiFiInfo();
-    _getCellInfo();
+    _getWiFiEstimatedLocation();
+    _getCellTowerEstimatedLocation();
   }
 
   // GPS 정보 가져오기
@@ -73,10 +82,119 @@ class _LocationScreenState extends State<LocationScreen> {
       );
       setState(() {
         _gpsLocation = "Lat: ${position.latitude}, Lng: ${position.longitude}";
+        _initialPosition = LatLng(position.latitude, position.longitude);
       });
+      _updateMarkers();
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLng(_initialPosition),
+      );
     } catch (e) {
       setState(() {
         _gpsLocation = "Failed to get GPS location: $e";
+      });
+    }
+  }
+
+  Future<void> _getWiFiEstimatedLocation() async {
+    try {
+      // TODO: wifiInfo에서 사용
+      String? wifiBSSID = await _networkInfo.getWifiBSSID();
+      if (wifiBSSID == null || wifiBSSID.isEmpty) {
+        setState(() {
+          _wifiEstimatedLocation = "No Wi-Fi info available for estimation.";
+        });
+        return;
+      }
+
+      final requestData = {
+        "wifiAccessPoints": [
+          {"macAddress": wifiBSSID}
+        ]
+      };
+
+      final response = await http.post(
+        Uri.parse("https://www.googleapis.com/geolocation/v1/geolocate?key=$googleGeoLocationAPIKey"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(requestData),
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        setState(() {
+          _wifiEstimatedLocation =
+              "Lat: ${data['location']['lat']}, Lng: ${data['location']['lng']}, Accuracy: ${data['accuracy']} meters";
+        });
+        _markers.add(
+          Marker(
+            markerId: MarkerId("wifi"),
+            position: LatLng(data['location']['lat'], data['location']['lng']),
+            infoWindow: InfoWindow(title: "Wi-Fi Estimated Location"),
+          ),
+        );
+      } else {
+        setState(() {
+          _wifiEstimatedLocation = "Failed to estimate Wi-Fi location: ${response.body}";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _wifiEstimatedLocation = "Error estimating Wi-Fi location: $e";
+      });
+    }
+  }
+
+  Future<void> _getCellTowerEstimatedLocation() async {
+    try {
+      final Map<dynamic, dynamic> cellInfo = await platform.invokeMethod('getCellInfo');
+      final List<dynamic> registered = cellInfo['registered'];
+
+      if (registered.isEmpty) {
+        setState(() {
+          _cellTowerEstimatedLocation = "No cell tower info available for estimation.";
+        });
+        return;
+      }
+
+      final Map<String, dynamic> firstCell = Map<String, dynamic>.from(registered.first);
+
+      final requestData = {
+        "cellTowers": [
+          {
+            "cellId": firstCell['cid'],
+            "locationAreaCode": firstCell['type'] == "LTE" ? firstCell['tac'] : firstCell['lac'],
+            "mobileCountryCode": firstCell['mcc'],
+            "mobileNetworkCode": firstCell['mnc']
+          }
+        ]
+      };
+
+      final response = await http.post(
+        Uri.parse("https://www.googleapis.com/geolocation/v1/geolocate?key=$googleGeoLocationAPIKey"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(requestData),
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        setState(() {
+          _cellTowerEstimatedLocation =
+              "Lat: ${data['location']['lat']}, Lng: ${data['location']['lng']}, Accuracy: ${data['accuracy']} meters";
+            _markers.add(
+              Marker(
+                markerId: MarkerId("cellTower"),
+                position: LatLng(data['location']['lat'], data['location']['lng']),
+                infoWindow: InfoWindow(title: "Cell Tower Estimated Location"),
+              ),
+            );
+        });
+      } else {
+        setState(() {
+          _cellTowerEstimatedLocation = "Failed to estimate cell tower location: ${response.body}";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _cellTowerEstimatedLocation = "Error estimating cell tower location: $e";
       });
     }
   }
@@ -125,54 +243,76 @@ class _LocationScreenState extends State<LocationScreen> {
     }
   }
 
+  void _updateMarkers() {
+    setState(() {
+      _markers.add(
+        Marker(
+          markerId: MarkerId("gps"),
+          position: _initialPosition,
+          infoWindow: InfoWindow(title: "GPS Location"),
+        ),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('Location Tracker')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                "GPS Location",
-                style: const TextStyle(fontWeight: FontWeight.bold),
+              SizedBox(
+                height: 400,
+                width: double.infinity,
+                child: GoogleMap(
+                  onMapCreated: (controller) => _mapController = controller,
+                  initialCameraPosition: CameraPosition(
+                    target: _initialPosition,
+                    zoom: 14.0,
+                  ),
+                  markers: _markers,
+                ),
               ),
-              Text(_gpsLocation),
-              SizedBox(height: 10),
-              Text(
-                "Wi-Fi Info",
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              Text(_wifiInfo),
-              SizedBox(height: 10),
-              Text(
-                "Registered Cell Tower Info",
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              Text(_registeredCellInfo),
-              SizedBox(height: 10),
-              Text(
-                "Neighboring Cell Tower Info",
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              Text(_neighboringCellInfo),
-              SizedBox(height: 30),
-              ElevatedButton(
-                onPressed: _getLocation,
-                child: Text(
-                  "Refresh",
-                  style: const TextStyle(
-                    color: Color.fromARGB(255, 0, 0, 0),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
+              SizedBox(height: 20),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("GPS Location", style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(_gpsLocation),
+                        SizedBox(height: 10),
+                        Text("Wi-Fi Estimated Location", style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(_wifiEstimatedLocation),
+                        SizedBox(height: 10),
+                        Text("Cell Tower Estimated Location", style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(_cellTowerEstimatedLocation),
+                        SizedBox(height: 10),
+                        Text("Wi-Fi Info", style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(_wifiInfo),
+                        SizedBox(height: 10),
+                        Text("Registered Cell Tower Info", style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(_registeredCellInfo),
+                        SizedBox(height: 10),
+                        Text("Neighboring Cell Tower Info", style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(_neighboringCellInfo),
+                        SizedBox(height: 30),
+                        ElevatedButton(
+                          onPressed: _getLocation,
+                          child: Text("Refresh"),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              )
-            ],
+              ),
+            ]
           ),
-        ),
       ),
     );
   }

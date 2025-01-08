@@ -5,6 +5,8 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+def googleMapsApiKey = project.hasProperty('google_maps_api_key') ? project.google_maps_api_key : "api_key_not_found"
+
 android {
     namespace = "com.eomchanu.location_tracker"
     compileSdk = flutter.compileSdkVersion
@@ -24,10 +26,14 @@ android {
         applicationId = "com.eomchanu.location_tracker"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk 19
+        minSdk 20
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
@@ -35,6 +41,7 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.debug
+            buildConfigField "String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey}\""
         }
     }
 }
