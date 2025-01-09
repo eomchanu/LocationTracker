@@ -33,6 +33,7 @@ class LocationScreen extends StatefulWidget {
 }
 
 class _LocationScreenState extends State<LocationScreen> {
+  String _currentLocation = "Fetching...";
   String _gpsLocation = "Fetching...";
   String _wifiEstimatedLocation = "Fetching...";
   String _cellTowerEstimatedLocation = "Fetching...";
@@ -69,19 +70,20 @@ class _LocationScreenState extends State<LocationScreen> {
 
   // 위치 정보 가져오기
   Future<void> _getLocation() async {
+    _getCurrentLocation();
     _getGPSLocation();
     _getWiFiEstimatedLocation();
     _getCellTowerEstimatedLocation();
   }
 
-  // GPS 정보 가져오기
-  Future<void> _getGPSLocation() async {
+  // 현재 위치 가져오기
+  Future<void> _getCurrentLocation() async {
     try {
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
       setState(() {
-        _gpsLocation = "Lat: ${position.latitude}, Lng: ${position.longitude}";
+        _currentLocation = "Lat: ${position.latitude}, Lng: ${position.longitude}";
         _initialPosition = LatLng(position.latitude, position.longitude);
       });
       _updateMarkers();
@@ -90,10 +92,47 @@ class _LocationScreenState extends State<LocationScreen> {
       );
     } catch (e) {
       setState(() {
-        _gpsLocation = "Failed to get GPS location: $e";
+        _currentLocation = "Failed to get current location: $e";
       });
     }
   }
+
+  // GPS 위치 가져오기
+  Future<void> _getGPSLocation() async {
+    try {
+      final response = await http.post(
+        Uri.parse("https://www.googleapis.com/geolocation/v1/geolocate?key=$googleGeoLocationAPIKey"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({}), // body를 비워도 기기의 기본 네트워크 정보를 기반으로 계산..
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        final double lat = data['location']['lat'];
+        final double lng = data['location']['lng'];
+
+        setState(() {
+          _gpsLocation = "Lat: $lat, Lng: $lng, Accuracy: ${data['accuracy']} meters";
+          _markers.add(
+            Marker(
+              markerId: MarkerId("GPS"),
+              position: LatLng(lat, lng),
+              infoWindow: InfoWindow(title: "GPS Location"),
+            ),
+          );
+        });
+      } else {
+        setState(() {
+          _currentLocation = "Failed to get Google GPS location: ${response.body}";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _currentLocation = "Error fetching Google GPS location: $e";
+      });
+    }
+  }
+
 
   Future<void> _getWiFiEstimatedLocation() async {
     try {
@@ -247,9 +286,9 @@ class _LocationScreenState extends State<LocationScreen> {
     setState(() {
       _markers.add(
         Marker(
-          markerId: MarkerId("gps"),
+          markerId: MarkerId("current"),
           position: _initialPosition,
-          infoWindow: InfoWindow(title: "GPS Location"),
+          infoWindow: InfoWindow(title: "Current Location"),
         ),
       );
     });
@@ -277,6 +316,10 @@ class _LocationScreenState extends State<LocationScreen> {
                 ),
               ),
               SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _getLocation,
+                child: Text("Refresh"),
+              ),
               Expanded(
                 child: SingleChildScrollView(
                   child: Padding(
@@ -284,6 +327,9 @@ class _LocationScreenState extends State<LocationScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Text("Current Location", style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(_currentLocation),
+                        SizedBox(height: 10),
                         Text("GPS Location", style: TextStyle(fontWeight: FontWeight.bold)),
                         Text(_gpsLocation),
                         SizedBox(height: 10),
@@ -302,10 +348,6 @@ class _LocationScreenState extends State<LocationScreen> {
                         Text("Neighboring Cell Tower Info", style: TextStyle(fontWeight: FontWeight.bold)),
                         Text(_neighboringCellInfo),
                         SizedBox(height: 30),
-                        ElevatedButton(
-                          onPressed: _getLocation,
-                          child: Text("Refresh"),
-                        ),
                       ],
                     ),
                   ),
