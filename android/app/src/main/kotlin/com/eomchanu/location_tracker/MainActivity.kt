@@ -1,6 +1,11 @@
 package com.eomchanu.location_tracker
 
 import android.os.Build
+import android.Manifest
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationManager
+import androidx.core.app.ActivityCompat
 import android.telephony.CellInfo
 import android.telephony.CellInfoGsm
 import android.telephony.CellInfoLte
@@ -12,12 +17,13 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.eomchanu.location_tracker/cell"
+    private val GPS_CHANNEL = "com.eomchanu.location_tracker/gps"
+    private val CELL_CHANNEL = "com.eomchanu.location_tracker/cell"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CELL_CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "getCellInfo") {
                 val cellInfoList = getCellInfo()
                 if (cellInfoList != null) {
@@ -29,8 +35,35 @@ class MainActivity : FlutterActivity() {
                 result.notImplemented()
             }
         }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, GPS_CHANNEL).setMethodCallHandler { call, result ->
+            if (call.method == "getGPSLocation") {
+                val location = getGPSLocation()
+                if (location != null) {
+                    val locationData = mapOf(
+                        "latitude" to location.latitude,
+                        "longitude" to location.longitude,
+                        "accuracy" to location.getAccuracy()
+                    )
+                    result.success(locationData)
+                } else {
+                    result.error("LOCATION_ERROR", "Failed to retrieve GPS location", null)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
     }
 
+    private fun getGPSLocation(): Location? {
+        val locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 1)
+            return null
+        }
+        return locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+    }
+    
     private fun getCellInfo(): Map<String, Any>? {
         val telephonyManager = getSystemService(TELEPHONY_SERVICE) as? TelephonyManager
         if (telephonyManager == null) {

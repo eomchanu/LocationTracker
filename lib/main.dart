@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ffi';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:network_info_plus/network_info_plus.dart';
@@ -40,7 +41,8 @@ class _LocationScreenState extends State<LocationScreen> {
   String _wifiInfo = "Fetching...";
   String _registeredCellInfo = "Fetching...";
   String _neighboringCellInfo = "Fetching...";
-  static const platform = MethodChannel('com.eomchanu.location_tracker/cell');
+  static const platform_gps = MethodChannel('com.eomchanu.location_tracker/gps');
+  static const platform_cell = MethodChannel('com.eomchanu.location_tracker/cell');
   final NetworkInfo _networkInfo = NetworkInfo();
 
   LatLng _initialPosition = const LatLng(37.7749, -122.4194); // Default: San Francisco
@@ -100,35 +102,26 @@ class _LocationScreenState extends State<LocationScreen> {
   // GPS 위치 가져오기
   Future<void> _getGPSLocation() async {
     try {
-      final response = await http.post(
-        Uri.parse("https://www.googleapis.com/geolocation/v1/geolocate?key=$googleGeoLocationAPIKey"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({}), // body를 비워도 기기의 기본 네트워크 정보를 기반으로 계산..
-      );
+      final Map<dynamic, dynamic> gpsData =
+          await platform_gps.invokeMethod('getGPSLocation');
+      final double latitude = gpsData['latitude'];
+      final double longitude = gpsData['longitude'];
+      final double accuracy = gpsData['accuracy'];
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = jsonDecode(response.body);
-        final double lat = data['location']['lat'];
-        final double lng = data['location']['lng'];
-
-        setState(() {
-          _gpsLocation = "Lat: $lat, Lng: $lng, Accuracy: ${data['accuracy']} meters";
-          _markers.add(
-            Marker(
-              markerId: MarkerId("GPS"),
-              position: LatLng(lat, lng),
-              infoWindow: InfoWindow(title: "GPS Location"),
-            ),
-          );
-        });
-      } else {
-        setState(() {
-          _currentLocation = "Failed to get Google GPS location: ${response.body}";
-        });
-      }
-    } catch (e) {
       setState(() {
-        _currentLocation = "Error fetching Google GPS location: $e";
+        _gpsLocation = "Lat: $latitude, Lng: $longitude, Accuracy: $accuracy";
+        _initialPosition = LatLng(latitude, longitude);
+      });
+      _markers.add(
+        Marker(
+          markerId: MarkerId("gps"),
+          position: LatLng(latitude, longitude),
+          infoWindow: InfoWindow(title: "GPS Location"),
+        ),
+      );
+    } on PlatformException catch (e) {
+      setState(() {
+        _gpsLocation = "Failed to fetch GPS location: ${e.message}";
       });
     }
   }
@@ -184,7 +177,7 @@ class _LocationScreenState extends State<LocationScreen> {
 
   Future<void> _getCellTowerEstimatedLocation() async {
     try {
-      final Map<dynamic, dynamic> cellInfo = await platform.invokeMethod('getCellInfo');
+      final Map<dynamic, dynamic> cellInfo = await platform_cell.invokeMethod('getCellInfo');
       final List<dynamic> registered = cellInfo['registered'];
 
       if (registered.isEmpty) {
@@ -194,15 +187,18 @@ class _LocationScreenState extends State<LocationScreen> {
         return;
       }
 
-      final Map<String, dynamic> firstCell = Map<String, dynamic>.from(registered.first);
+      final Map<String, dynamic> registeredCellTower = Map<String, dynamic>.from(registered.first);
 
       final requestData = {
+        // "homeMobileCountryCode": registeredCellTower['mcc'],
+        // "homeMobileNetworkCode": registeredCellTower['mnc'],
+        // "radioType": registeredCellTower['type'],
         "cellTowers": [
           {
-            "cellId": firstCell['cid'],
-            "locationAreaCode": firstCell['type'] == "LTE" ? firstCell['tac'] : firstCell['lac'],
-            "mobileCountryCode": firstCell['mcc'],
-            "mobileNetworkCode": firstCell['mnc']
+            "cellId": registeredCellTower['cid'],
+            "locationAreaCode": registeredCellTower['type'] == "LTE" ? registeredCellTower['tac'] : registeredCellTower['lac'],
+            "mobileCountryCode": registeredCellTower['mcc'],
+            "mobileNetworkCode": registeredCellTower['mnc']
           }
         ]
       };
@@ -256,7 +252,7 @@ class _LocationScreenState extends State<LocationScreen> {
   // 기지국 정보 가져오기
   Future<void> _getCellInfo() async {
     try {
-      final Map<dynamic, dynamic> cellInfo = await platform.invokeMethod('getCellInfo');
+      final Map<dynamic, dynamic> cellInfo = await platform_cell.invokeMethod('getCellInfo');
       final List<dynamic> registered = cellInfo['registered'];
       final List<dynamic> neighboring = cellInfo['neighboring'];
 
