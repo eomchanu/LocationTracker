@@ -175,6 +175,65 @@ class _LocationScreenState extends State<LocationScreen> {
     }
   }
 
+  // Future<void> _getCellTowerEstimatedLocation() async {
+  //   try {
+  //     final Map<dynamic, dynamic> cellInfo = await platform_cell.invokeMethod('getCellInfo');
+  //     final List<dynamic> registered = cellInfo['registered'];
+
+  //     if (registered.isEmpty) {
+  //       setState(() {
+  //         _cellTowerEstimatedLocation = "No cell tower info available for estimation.";
+  //       });
+  //       return;
+  //     }
+
+  //     final Map<String, dynamic> registeredCellTower = Map<String, dynamic>.from(registered.first);
+
+  //     final requestData = {
+  //       // "homeMobileCountryCode": registeredCellTower['mcc'],
+  //       // "homeMobileNetworkCode": registeredCellTower['mnc'],
+  //       // "radioType": registeredCellTower['type'],
+  //       "cellTowers": [
+  //         {
+  //           "cellId": registeredCellTower['cid'],
+  //           "locationAreaCode": registeredCellTower['type'] == "LTE" ? registeredCellTower['tac'] : registeredCellTower['lac'],
+  //           "mobileCountryCode": registeredCellTower['mcc'],
+  //           "mobileNetworkCode": registeredCellTower['mnc']
+  //         }
+  //       ]
+  //     };
+
+  //     final response = await http.post(
+  //       Uri.parse("https://www.googleapis.com/geolocation/v1/geolocate?key=$googleGeoLocationAPIKey"),
+  //       headers: {"Content-Type": "application/json"},
+  //       body: jsonEncode(requestData),
+  //     );
+
+  //     if (response.statusCode == 200) {
+  //       final Map<String, dynamic> data = jsonDecode(response.body);
+  //       setState(() {
+  //         _cellTowerEstimatedLocation =
+  //             "Lat: ${data['location']['lat']}, Lng: ${data['location']['lng']}, Accuracy: ${data['accuracy']} meters";
+  //           _markers.add(
+  //             Marker(
+  //               markerId: MarkerId("cellTower"),
+  //               position: LatLng(data['location']['lat'], data['location']['lng']),
+  //               infoWindow: InfoWindow(title: "Cell Tower Estimated Location"),
+  //             ),
+  //           );
+  //       });
+  //     } else {
+  //       setState(() {
+  //         _cellTowerEstimatedLocation = "Failed to estimate cell tower location: ${response.body}";
+  //       });
+  //     }
+  //   } catch (e) {
+  //     setState(() {
+  //       _cellTowerEstimatedLocation = "Error estimating cell tower location: $e";
+  //     });
+  //   }
+  // }
+
   Future<void> _getCellTowerEstimatedLocation() async {
     try {
       final Map<dynamic, dynamic> cellInfo = await platform_cell.invokeMethod('getCellInfo');
@@ -188,36 +247,32 @@ class _LocationScreenState extends State<LocationScreen> {
       }
 
       final Map<String, dynamic> registeredCellTower = Map<String, dynamic>.from(registered.first);
+      
+      final url = "https://opencellid.org/cell/get";
 
-      final requestData = {
-        // "homeMobileCountryCode": registeredCellTower['mcc'],
-        // "homeMobileNetworkCode": registeredCellTower['mnc'],
-        // "radioType": registeredCellTower['type'],
-        "cellTowers": [
-          {
-            "cellId": registeredCellTower['cid'],
-            "locationAreaCode": registeredCellTower['type'] == "LTE" ? registeredCellTower['tac'] : registeredCellTower['lac'],
-            "mobileCountryCode": registeredCellTower['mcc'],
-            "mobileNetworkCode": registeredCellTower['mnc']
-          }
-        ]
+      final queryParams = {
+        "format": "json",
+        "key": openCellIdAPIKey,
+        "mcc": "450",
+        "mnc": "06",
+        "lac": "8470",
+        "cellid": "51748097",
+        "radio": "LTE"
       };
 
-      final response = await http.post(
-        Uri.parse("https://www.googleapis.com/geolocation/v1/geolocate?key=$googleGeoLocationAPIKey"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode(requestData),
-      );
+      final uri = Uri.parse(url).replace(queryParameters: queryParams);
+
+      final response = await http.get(uri);
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = jsonDecode(response.body);
+        final data = jsonDecode(response.body);
         setState(() {
           _cellTowerEstimatedLocation =
-              "Lat: ${data['location']['lat']}, Lng: ${data['location']['lng']}, Accuracy: ${data['accuracy']} meters";
+              "Lat: ${data['lat']}, Lng: ${data['lon']}, Accuracy: ${data['range']} meters";
             _markers.add(
               Marker(
                 markerId: MarkerId("cellTower"),
-                position: LatLng(data['location']['lat'], data['location']['lng']),
+                position: LatLng(data['lat'], data['lon']),
                 infoWindow: InfoWindow(title: "Cell Tower Estimated Location"),
               ),
             );
