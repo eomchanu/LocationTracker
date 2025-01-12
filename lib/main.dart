@@ -13,6 +13,24 @@ void main() {
   runApp(LocationApp());
 }
 
+class LocationData {
+  final double latitude;
+  final double longitude;
+  final double? accuracy;
+
+  LocationData({
+    required this.latitude,
+    required this.longitude,
+    required this.accuracy,
+  });
+
+  @override
+  String toString() {
+    String res = "Lat: $latitude, Lng: $longitude${accuracy != null ? ", Accuracy: $accuracy meters" : ""}";
+    return res;
+  }
+}
+
 class LocationApp extends StatelessWidget {
   const LocationApp({super.key});
 
@@ -34,15 +52,24 @@ class LocationScreen extends StatefulWidget {
 }
 
 class _LocationScreenState extends State<LocationScreen> {
-  String _currentLocation = "Fetching...";
-  String _gpsLocation = "Fetching...";
-  String _wifiEstimatedLocation = "Fetching...";
-  String _cellTowerEstimatedLocation = "Fetching...";
+  LocationData? _currentLocation;
+  LocationData? _gpsLocation;
+  LocationData? _wifiEstimatedLocation;
+  LocationData? _cellTowerEstimatedLocation;
+
+  double? _distanceFromGPS;
+  double? _distanceFromWiFi;
+  double? _distanceFromCellTower;
+
+  Set<Circle> _circles = {};
+
   String _wifiInfo = "Fetching...";
   String _registeredCellInfo = "Fetching...";
   String _neighboringCellInfo = "Fetching...";
+
   static const platform_gps = MethodChannel('com.eomchanu.location_tracker/gps');
   static const platform_cell = MethodChannel('com.eomchanu.location_tracker/cell');
+
   final NetworkInfo _networkInfo = NetworkInfo();
 
   LatLng _initialPosition = const LatLng(37.7749, -122.4194); // Default: San Francisco
@@ -56,6 +83,78 @@ class _LocationScreenState extends State<LocationScreen> {
     _getWiFiInfo();
     _getCellInfo();
     _getLocation();
+  }
+
+  // 거리차 계산 함수
+  double calculateDistance(LocationData from, LocationData to) {
+    return Geolocator.distanceBetween(
+      from.latitude,
+      from.longitude,
+      to.latitude,
+      to.longitude,
+    );
+  }
+
+  void _updateCircles() {
+    setState(() {
+      _circles.clear(); // 기존 원형 제거
+      if (_gpsLocation != null) {
+        _circles.add(
+          Circle(
+            circleId: CircleId("gpsCircle"),
+            center: LatLng(_gpsLocation!.latitude, _gpsLocation!.longitude),
+            radius: _distanceFromGPS ?? 0, // 정확도 반영
+            strokeWidth: 2,
+            fillColor: Colors.blue.withOpacity(0.3),
+            strokeColor: Colors.blue,
+          ),
+        );
+      }
+      if (_wifiEstimatedLocation != null) {
+        _circles.add(
+          Circle(
+            circleId: CircleId("wifiCircle"),
+            center: LatLng(_wifiEstimatedLocation!.latitude, _wifiEstimatedLocation!.longitude),
+            radius: _distanceFromWiFi ?? 0,
+            strokeWidth: 2,
+            fillColor: Colors.green.withOpacity(0.3),
+            strokeColor: Colors.green,
+          ),
+        );
+      }
+      if (_cellTowerEstimatedLocation != null) {
+        _circles.add(
+          Circle(
+            circleId: CircleId("cellTowerCircle"),
+            center: LatLng(_cellTowerEstimatedLocation!.latitude, _cellTowerEstimatedLocation!.longitude),
+            radius: _distanceFromCellTower ?? 0,
+            strokeWidth: 2,
+            fillColor: Colors.orange.withOpacity(0.3),
+            strokeColor: Colors.orange,
+          ),
+        );
+      }
+    });
+  }
+
+
+  // 각각의 거리차 계산 함수
+  void _calculateDistances() {
+    if (_currentLocation != null) {
+      setState(() {
+        _distanceFromGPS = _gpsLocation != null
+            ? calculateDistance(_currentLocation!, _gpsLocation!)
+            : null;
+
+        _distanceFromWiFi = _wifiEstimatedLocation != null
+            ? calculateDistance(_currentLocation!, _wifiEstimatedLocation!)
+            : null;
+
+        _distanceFromCellTower = _cellTowerEstimatedLocation != null
+            ? calculateDistance(_currentLocation!, _cellTowerEstimatedLocation!)
+            : null;
+      });
+    }
   }
   
   // 위치 권한 요청
@@ -76,6 +175,8 @@ class _LocationScreenState extends State<LocationScreen> {
     _getGPSLocation();
     _getWiFiEstimatedLocation();
     _getCellTowerEstimatedLocation();
+    _calculateDistances();
+    _updateCircles();
   }
 
   // 현재 위치 가져오기
@@ -85,16 +186,27 @@ class _LocationScreenState extends State<LocationScreen> {
         desiredAccuracy: LocationAccuracy.high,
       );
       setState(() {
-        _currentLocation = "Lat: ${position.latitude}, Lng: ${position.longitude}";
+        _currentLocation = LocationData(
+          latitude: position.latitude,
+          longitude: position.longitude,
+          accuracy: null
+        );
         _initialPosition = LatLng(position.latitude, position.longitude);
       });
-      _updateMarkers();
+
+      _markers.add(
+        Marker(
+          markerId: MarkerId("current"),
+          position: LatLng(position.latitude, position.longitude),
+          infoWindow: InfoWindow(title: "Current Location"),
+        ),
+      );
       _mapController?.animateCamera(
         CameraUpdate.newLatLng(_initialPosition),
       );
     } catch (e) {
       setState(() {
-        _currentLocation = "Failed to get current location: $e";
+        _currentLocation = null;
       });
     }
   }
@@ -104,39 +216,34 @@ class _LocationScreenState extends State<LocationScreen> {
     try {
       final Map<dynamic, dynamic> gpsData =
           await platform_gps.invokeMethod('getGPSLocation');
-      final double latitude = gpsData['latitude'];
-      final double longitude = gpsData['longitude'];
-      final double accuracy = gpsData['accuracy'];
 
       setState(() {
-        _gpsLocation = "Lat: $latitude, Lng: $longitude, Accuracy: $accuracy";
-        _initialPosition = LatLng(latitude, longitude);
+        _gpsLocation = LocationData(
+          latitude: gpsData['latitude'],
+          longitude: gpsData['longitude'],
+          accuracy: gpsData['accuracy'],
+        );
       });
+      
       _markers.add(
         Marker(
           markerId: MarkerId("gps"),
-          position: LatLng(latitude, longitude),
+          position: LatLng(gpsData['latitude'], gpsData['longitude']),
           infoWindow: InfoWindow(title: "GPS Location"),
         ),
       );
-    } on PlatformException catch (e) {
+    } on PlatformException {
       setState(() {
-        _gpsLocation = "Failed to fetch GPS location: ${e.message}";
+        _gpsLocation = null;
       });
     }
   }
 
-
+  // Wi-Fi 기반 위치 추정
   Future<void> _getWiFiEstimatedLocation() async {
     try {
-      // TODO: wifiInfo에서 사용
       String? wifiBSSID = await _networkInfo.getWifiBSSID();
-      if (wifiBSSID == null || wifiBSSID.isEmpty) {
-        setState(() {
-          _wifiEstimatedLocation = "No Wi-Fi info available for estimation.";
-        });
-        return;
-      }
+      if (wifiBSSID == null || wifiBSSID.isEmpty) return;
 
       final requestData = {
         "wifiAccessPoints": [
@@ -151,11 +258,13 @@ class _LocationScreenState extends State<LocationScreen> {
       );
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = jsonDecode(response.body);
-        setState(() {
-          _wifiEstimatedLocation =
-              "Lat: ${data['location']['lat']}, Lng: ${data['location']['lng']}, Accuracy: ${data['accuracy']} meters";
-        });
+        final data = jsonDecode(response.body);
+        _wifiEstimatedLocation = LocationData(
+          latitude: data['location']['lat'],
+          longitude: data['location']['lng'],
+          accuracy: data['accuracy'],
+        );
+
         _markers.add(
           Marker(
             markerId: MarkerId("wifi"),
@@ -163,128 +272,57 @@ class _LocationScreenState extends State<LocationScreen> {
             infoWindow: InfoWindow(title: "Wi-Fi Estimated Location"),
           ),
         );
-      } else {
-        setState(() {
-          _wifiEstimatedLocation = "Failed to estimate Wi-Fi location: ${response.body}";
-        });
       }
     } catch (e) {
       setState(() {
-        _wifiEstimatedLocation = "Error estimating Wi-Fi location: $e";
+        _wifiEstimatedLocation = null;
       });
     }
   }
 
-  // Future<void> _getCellTowerEstimatedLocation() async {
-  //   try {
-  //     final Map<dynamic, dynamic> cellInfo = await platform_cell.invokeMethod('getCellInfo');
-  //     final List<dynamic> registered = cellInfo['registered'];
-
-  //     if (registered.isEmpty) {
-  //       setState(() {
-  //         _cellTowerEstimatedLocation = "No cell tower info available for estimation.";
-  //       });
-  //       return;
-  //     }
-
-  //     final Map<String, dynamic> registeredCellTower = Map<String, dynamic>.from(registered.first);
-
-  //     final requestData = {
-  //       // "homeMobileCountryCode": registeredCellTower['mcc'],
-  //       // "homeMobileNetworkCode": registeredCellTower['mnc'],
-  //       // "radioType": registeredCellTower['type'],
-  //       "cellTowers": [
-  //         {
-  //           "cellId": registeredCellTower['cid'],
-  //           "locationAreaCode": registeredCellTower['type'] == "LTE" ? registeredCellTower['tac'] : registeredCellTower['lac'],
-  //           "mobileCountryCode": registeredCellTower['mcc'],
-  //           "mobileNetworkCode": registeredCellTower['mnc']
-  //         }
-  //       ]
-  //     };
-
-  //     final response = await http.post(
-  //       Uri.parse("https://www.googleapis.com/geolocation/v1/geolocate?key=$googleGeoLocationAPIKey"),
-  //       headers: {"Content-Type": "application/json"},
-  //       body: jsonEncode(requestData),
-  //     );
-
-  //     if (response.statusCode == 200) {
-  //       final Map<String, dynamic> data = jsonDecode(response.body);
-  //       setState(() {
-  //         _cellTowerEstimatedLocation =
-  //             "Lat: ${data['location']['lat']}, Lng: ${data['location']['lng']}, Accuracy: ${data['accuracy']} meters";
-  //           _markers.add(
-  //             Marker(
-  //               markerId: MarkerId("cellTower"),
-  //               position: LatLng(data['location']['lat'], data['location']['lng']),
-  //               infoWindow: InfoWindow(title: "Cell Tower Estimated Location"),
-  //             ),
-  //           );
-  //       });
-  //     } else {
-  //       setState(() {
-  //         _cellTowerEstimatedLocation = "Failed to estimate cell tower location: ${response.body}";
-  //       });
-  //     }
-  //   } catch (e) {
-  //     setState(() {
-  //       _cellTowerEstimatedLocation = "Error estimating cell tower location: $e";
-  //     });
-  //   }
-  // }
-
+  // 기지국 기반 위치 추정
   Future<void> _getCellTowerEstimatedLocation() async {
     try {
       final Map<dynamic, dynamic> cellInfo = await platform_cell.invokeMethod('getCellInfo');
       final List<dynamic> registered = cellInfo['registered'];
-
-      if (registered.isEmpty) {
-        setState(() {
-          _cellTowerEstimatedLocation = "No cell tower info available for estimation.";
-        });
-        return;
-      }
+      if (registered.isEmpty) return;
 
       final Map<String, dynamic> registeredCellTower = Map<String, dynamic>.from(registered.first);
-      
-      final url = "https://opencellid.org/cell/get";
 
+      final url = "https://opencellid.org/cell/get";
       final queryParams = {
         "format": "json",
         "key": openCellIdAPIKey,
-        "mcc": "450",
-        "mnc": "06",
-        "lac": "8470",
-        "cellid": "51748097",
-        "radio": "LTE"
+        "mcc": registeredCellTower['mcc'].toString(),
+        "mnc": registeredCellTower['mnc'].toString(),
+        "lac": registeredCellTower[registeredCellTower['type'] == "LTE" ? 'tac' : 'lac'].toString(),
+        "cellid": registeredCellTower['cid'].toString(),
+        "radio": registeredCellTower['type'].toString(),
       };
-
+      
       final uri = Uri.parse(url).replace(queryParameters: queryParams);
-
       final response = await http.get(uri);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        setState(() {
-          _cellTowerEstimatedLocation =
-              "Lat: ${data['lat']}, Lng: ${data['lon']}, Accuracy: ${data['range']} meters";
-            _markers.add(
-              Marker(
-                markerId: MarkerId("cellTower"),
-                position: LatLng(data['lat'], data['lon']),
-                infoWindow: InfoWindow(title: "Cell Tower Estimated Location"),
-              ),
-            );
-        });
-      } else {
-        setState(() {
-          _cellTowerEstimatedLocation = "Failed to estimate cell tower location: ${response.body}";
-        });
+        _cellTowerEstimatedLocation = LocationData(
+          latitude: data['lat'],
+          longitude: data['lon'],
+          accuracy: (data['range'] as num).toDouble(),
+        );
+
+        _markers.add(
+          Marker(
+            markerId: MarkerId("cellTower"),
+            position: LatLng(data['lat'], data['lon']),
+            infoWindow: InfoWindow(title: "Cell Tower Estimated Location"),
+          ),
+        );
       }
     } catch (e) {
       setState(() {
-        _cellTowerEstimatedLocation = "Error estimating cell tower location: $e";
+        _cellTowerEstimatedLocation = null;
+        print(e);
       });
     }
   }
@@ -333,18 +371,7 @@ class _LocationScreenState extends State<LocationScreen> {
     }
   }
 
-  void _updateMarkers() {
-    setState(() {
-      _markers.add(
-        Marker(
-          markerId: MarkerId("current"),
-          position: _initialPosition,
-          infoWindow: InfoWindow(title: "Current Location"),
-        ),
-      );
-    });
-  }
-
+  // MARK: UI
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -364,6 +391,7 @@ class _LocationScreenState extends State<LocationScreen> {
                     zoom: 14.0,
                   ),
                   markers: _markers,
+                  circles: _circles,
                 ),
               ),
               SizedBox(height: 20),
@@ -379,16 +407,21 @@ class _LocationScreenState extends State<LocationScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text("Current Location", style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text(_currentLocation),
+                        Text(_currentLocation != null ? _currentLocation.toString() : "fetching..."),
+                        SizedBox(height: 10),
+                        Text("Distances from Current Location", style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text("GPS: ${_distanceFromGPS != null ? "${_distanceFromGPS!.toStringAsFixed(2)} meters" : "Not available"}"),
+                        Text("Wi-Fi: ${_distanceFromWiFi != null ? "${_distanceFromWiFi!.toStringAsFixed(2)} meters" : "Not available"}"),
+                        Text("Cell Tower: ${_distanceFromCellTower != null ? "${_distanceFromCellTower!.toStringAsFixed(2)} meters" : "Not available"}"),
                         SizedBox(height: 10),
                         Text("GPS Location", style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text(_gpsLocation),
+                        Text(_gpsLocation != null ? _gpsLocation.toString() : "fetching..."),
                         SizedBox(height: 10),
                         Text("Wi-Fi Estimated Location", style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text(_wifiEstimatedLocation),
+                        Text(_wifiEstimatedLocation != null ? _wifiEstimatedLocation.toString() : "fetching..."),
                         SizedBox(height: 10),
                         Text("Cell Tower Estimated Location", style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text(_cellTowerEstimatedLocation),
+                        Text(_cellTowerEstimatedLocation != null ? _cellTowerEstimatedLocation.toString() : "fetching..."),
                         SizedBox(height: 10),
                         Text("Wi-Fi Info", style: TextStyle(fontWeight: FontWeight.bold)),
                         Text(_wifiInfo),
