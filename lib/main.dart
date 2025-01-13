@@ -102,11 +102,11 @@ class _LocationScreenState extends State<LocationScreen> {
         _circles.add(
           Circle(
             circleId: CircleId("gpsCircle"),
-            center: LatLng(_gpsLocation!.latitude, _gpsLocation!.longitude),
+            center: LatLng(_currentLocation!.latitude, _currentLocation!.longitude),
             radius: _distanceFromGPS ?? 0, // 정확도 반영
             strokeWidth: 2,
-            fillColor: Colors.blue.withOpacity(0.3),
-            strokeColor: Colors.blue,
+            // fillColor: Colors.green.withOpacity(0.3),
+            strokeColor: Colors.green,
           ),
         );
       }
@@ -114,11 +114,11 @@ class _LocationScreenState extends State<LocationScreen> {
         _circles.add(
           Circle(
             circleId: CircleId("wifiCircle"),
-            center: LatLng(_wifiEstimatedLocation!.latitude, _wifiEstimatedLocation!.longitude),
+            center: LatLng(_currentLocation!.latitude, _currentLocation!.longitude),
             radius: _distanceFromWiFi ?? 0,
             strokeWidth: 2,
-            fillColor: Colors.green.withOpacity(0.3),
-            strokeColor: Colors.green,
+            // fillColor: Colors.blue.withOpacity(0.3),
+            strokeColor: Colors.blue,
           ),
         );
       }
@@ -126,10 +126,10 @@ class _LocationScreenState extends State<LocationScreen> {
         _circles.add(
           Circle(
             circleId: CircleId("cellTowerCircle"),
-            center: LatLng(_cellTowerEstimatedLocation!.latitude, _cellTowerEstimatedLocation!.longitude),
+            center: LatLng(_currentLocation!.latitude, _currentLocation!.longitude),
             radius: _distanceFromCellTower ?? 0,
             strokeWidth: 2,
-            fillColor: Colors.orange.withOpacity(0.3),
+            // fillColor: Colors.orange.withOpacity(0.3),
             strokeColor: Colors.orange,
           ),
         );
@@ -410,9 +410,9 @@ class _LocationScreenState extends State<LocationScreen> {
                         Text(_currentLocation != null ? _currentLocation.toString() : "fetching..."),
                         SizedBox(height: 10),
                         Text("Distances from Current Location", style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text("GPS: ${_distanceFromGPS != null ? "${_distanceFromGPS!.toStringAsFixed(2)} meters" : "Not available"}"),
-                        Text("Wi-Fi: ${_distanceFromWiFi != null ? "${_distanceFromWiFi!.toStringAsFixed(2)} meters" : "Not available"}"),
-                        Text("Cell Tower: ${_distanceFromCellTower != null ? "${_distanceFromCellTower!.toStringAsFixed(2)} meters" : "Not available"}"),
+                        Text("GPS: ${_distanceFromGPS != null ? "${_distanceFromGPS!.toStringAsFixed(2)} meters" : "Not available"}", style: TextStyle(color: Colors.green)),
+                        Text("Wi-Fi: ${_distanceFromWiFi != null ? "${_distanceFromWiFi!.toStringAsFixed(2)} meters" : "Not available"}", style: TextStyle(color: Colors.blue)),
+                        Text("Cell Tower: ${_distanceFromCellTower != null ? "${_distanceFromCellTower!.toStringAsFixed(2)} meters" : "Not available"}", style: TextStyle(color: Colors.orange)),
                         SizedBox(height: 10),
                         Text("GPS Location", style: TextStyle(fontWeight: FontWeight.bold)),
                         Text(_gpsLocation != null ? _gpsLocation.toString() : "fetching..."),
